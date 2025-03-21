@@ -3,26 +3,31 @@ from sklearn.linear_model import LinearRegression
 
 
 def train_prediction_model(df, property_type):  # train and predict
-    tax_sums = {  # adds all the rows
-        "collection": df[[f'Tax_Collection_Cr_2013_14_{property_type}',
-                          f'Tax_Collection_Cr_2014_15_{property_type}',
-                          f'Tax_Collection_Cr_2015_16_{property_type}',
-                          f'Tax_Collection_Cr_2016_17_{property_type}',
-                          f'Tax_Collection_Cr_2017_18_{property_type}']].sum(axis=0),
+    # summing columns for tax collection and demand
+    tax_sums = {
+        "collection": df.select([
+            f'Tax_Collection_Cr_2013_14_{property_type}',
+            f'Tax_Collection_Cr_2014_15_{property_type}',
+            f'Tax_Collection_Cr_2015_16_{property_type}',
+            f'Tax_Collection_Cr_2016_17_{property_type}',
+            f'Tax_Collection_Cr_2017_18_{property_type}'
+        ]).sum().to_numpy()[0],  # convert to numpy array and extract values
 
-        "demand": df[[f'Tax_Demand_Cr_2013_14_{property_type}',
-                      f'Tax_Demand_Cr_2014_15_{property_type}',
-                      f'Tax_Demand_Cr_2015_16_{property_type}',
-                      f'Tax_Demand_Cr_2016_17_{property_type}',
-                      f'Tax_Demand_Cr_2017_18_{property_type}']].sum(axis=0)
+        "demand": df.select([
+            f'Tax_Demand_Cr_2013_14_{property_type}',
+            f'Tax_Demand_Cr_2014_15_{property_type}',
+            f'Tax_Demand_Cr_2015_16_{property_type}',
+            f'Tax_Demand_Cr_2016_17_{property_type}',
+            f'Tax_Demand_Cr_2017_18_{property_type}'
+        ]).sum().to_numpy()[0]  # convert to numpy array and extract values
     }
 
     X = np.array([2014, 2015, 2016, 2017, 2018]).reshape(-1, 1)
     models = {}
 
     for key in ["collection", "demand"]:
-        y = tax_sums[key].values
-        model = LinearRegression()  # LinearRegression() call
+        y = tax_sums[key]
+        model = LinearRegression()  
         model.fit(X, y)  # fits the model
         models[key] = model
 

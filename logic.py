@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 import os
-import pandas as pd
+import polars as pl  
 from langchain_community.utilities import SQLDatabase
 from langchain_core.output_parsers import StrOutputParser  # for parsing the output into a string
 from langchain_core.runnables import RunnablePassthrough  # allows the function to pass as a runnable
@@ -12,21 +12,18 @@ import re
 load_dotenv()  # load the environment variables
 sec_key = os.getenv("GROQ_API_KEY")
 mysql_uri = os.getenv("MYSQL_URI")
-
 model_name1 = "qwen-2.5-32b"  # name of model used
 llm = ChatGroq(
     model_name=model_name1,
     temperature=0.1,  # more accurate results
     groq_api_key=sec_key
 )
-
 model_name = "llama-3.2-1b-preview"  # name of model used
 llm1 = ChatGroq(  # used only for breakdown function to optimize token usage
     model_name=model_name,
     temperature=0.1,  # more accurate results
     groq_api_key=sec_key
 )
-
 SCHEMA_CACHE = None  # global schema cache
 
 
@@ -42,7 +39,6 @@ def get_sql_chain(db: SQLDatabase):  # function to get sql query
         Based on the table schema below, write only a SQL query that would answer the user's question.
         Don't provide any extra information other than the sql query.
         {schema}
-
         For example: 
         Question: "How many rows are there in the pune table?"
         SQL Query: SELECT COUNT(Ward_Name) AS ward_count FROM pune;
@@ -56,7 +52,6 @@ def get_sql_chain(db: SQLDatabase):  # function to get sql query
         SQL Query: SELECT ROUND(SUM(Tax_Demand_Cr_2016_17_Residential) - SUM(Tax_Collection_Cr_2016_17_Residential), 2) AS collection_gap_2016_17 FROM thanjavur;
         Question: What was the collection gap for solapur from 2013-18 residential?
         SQL Query: SELECT ROUND((SUM(Tax_Demand_Cr_2013_14_Residential) + SUM(Tax_Demand_Cr_2014_15_Residential) + SUM(Tax_Demand_Cr_2015_16_Residential) + SUM(Tax_Demand_Cr_2016_17_Residential) + SUM(Tax_Demand_Cr_2017_18_Residential)) - (SUM(Tax_Collection_Cr_2013_14_Residential) + SUM(Tax_Collection_Cr_2014_15_Residential) + SUM(Tax_Collection_Cr_2015_16_Residential) + SUM(Tax_Collection_Cr_2016_17_Residential) + SUM(Tax_Collection_Cr_2017_18_Residential)), 2) AS collection_gap FROM solapur;
-        
         Your turn:
         Question: {question}
         SQL Query:
@@ -70,7 +65,7 @@ def get_sql_chain(db: SQLDatabase):  # function to get sql query
     )
 
 
-def get_prediction_response(user_query: str, city: str, property_type: str, year: int, df: pd.DataFrame):
+def get_prediction_response(user_query: str, city: str, property_type: str, year: int, df: pl.DataFrame):
     predict_tax = train_prediction_model(df, property_type)  # train the model for the given property type
     prediction = predict_tax(year) if year is not None and year >= 2019 else None  # get the prediction for the year
     # if prediction is available, return only the relevant prediction based on user query
@@ -92,14 +87,12 @@ def get_sql_response(user_query: str, db: SQLDatabase):
     template = """
        Convert the SQL response into a natural language response:
        {schema}
-
        Question: {question}
        SQL Query: {query}
        SQL Response: {response}
        Natural Language Response (check if response is related to a property efficiency or counting entries, if neither, append " crore" at the end):
     """
     prompt = ChatPromptTemplate.from_template(template)  # template to get the natural language response
-
     chain = (
             RunnablePassthrough.assign(query=sql_chain).assign(
                 schema=lambda _: get_schema(db),  # use cached schema
@@ -109,13 +102,12 @@ def get_sql_response(user_query: str, db: SQLDatabase):
             | llm
             | StrOutputParser()
     )
-
     return chain.invoke({
         "question": user_query
     })
 
 
-def predict_metric(user_query, city, year, property_type, df):  # for predicting collection gap / property efficiency
+def predict_metric(user_query, city, year, property_type, df: pl.DataFrame):  # for predicting collection gap / property efficiency
     predict_tax = train_prediction_model(df, property_type)  # train the prediction model for the given property type
     tax_demand = predict_tax(year)["predicted_demand"]  # get the prediction for tax demand
     tax_collection = predict_tax(year)["predicted_collection"]  # get the prediction for tax collection
@@ -143,10 +135,8 @@ def give_breakdown(user_query: str, response: str, db: SQLDatabase, is_predictio
         template = """
             Based on the user's question and the predicted response, provide a structured breakdown of how the prediction was generated.
             The explanation should be in past tense and concise.
-
             **Question:** {question}  
             **Response:** {response} 
-
             **Breakdown:**      
             • Historical property tax data from 2013 to 2018 was gathered.  
             • A **Linear Regression** model was trained on this data to identify patterns.  
@@ -157,10 +147,8 @@ def give_breakdown(user_query: str, response: str, db: SQLDatabase, is_predictio
         template = """
             Provide a structured breakdown of how the response was derived from the database.
             The explanation should be in past tense and concise.
-
             **Question:** {question}  
             **Response:** {response}
-
             **Breakdown:**  
             • Step 1: Identify relevant tables and fields.  
             • Step 2: Apply necessary filters (e.g., city, property type, year).  
@@ -168,9 +156,7 @@ def give_breakdown(user_query: str, response: str, db: SQLDatabase, is_predictio
             • Step 4: Compute values using the database records.  
             • Step 5: Format the response accordingly.  
         """
-
     prompt = ChatPromptTemplate.from_template(template)
-
     chain = (
             RunnablePassthrough.assign(
                 schema=lambda _: get_schema(db),  # get cached schema
@@ -179,13 +165,11 @@ def give_breakdown(user_query: str, response: str, db: SQLDatabase, is_predictio
             | llm1
             | StrOutputParser()
     )
-
     return chain.invoke({
         "question": user_query,
         "response": response,
         "sql_query": sql_query,
     })
-
 
 
 def generate_sql_query(db, question):
@@ -203,11 +187,11 @@ def extract_metric_type(user_query: str):
     elif "property efficiency" in user_query:
         return "property efficiency"
     else:
-        return "unknown"  # Default if no known type is found
-    
-    
+        return "unknown"  # fefault if no known type is found
+
+
 def get_response(user_query: str, db: SQLDatabase, city: str, property_type: str, year: int,
-                 df: pd.DataFrame):
+                 df: pl.DataFrame):
     metric_type = extract_metric_type(user_query)  # extract metric type
     # check for a prediction-based response
     prediction_response = get_prediction_response(user_query, city, property_type, year, df)
@@ -232,29 +216,7 @@ def chatbot_response(user_query: str):  # function to return the chatbot_respons
     AI: Provide the most relevant and concise answer.
     """
     template = ChatPromptTemplate.from_template(template)
-    sequence = template | llm  
+    sequence = template | llm
     response = sequence.invoke({"user_query": user_query})
     response_text = response.content.strip()  # removes extra whitespaces
     return response_text  # return only the content
-
-
-if __name__ == "__main__":
-    mysql_uri = mysql_uri  # use local database
-    db = SQLDatabase.from_uri(mysql_uri)
-    df = pd.read_csv("D:/TaxQueryAI/datasets/transformed_data/Property-Tax-Erode.csv")  # load tax data
-
-    # example: normal query
-    user_query = "What was the tax collection in 2013-14 residential for Erode in ward 3?"
-    city = "Erode"
-    property_type = "Residential"
-    year = 2013
-    sql_query = get_sql_chain(db).invoke({"question": user_query})  # get sql query
-    print(sql_query)
-    response = get_response(user_query, db, city, property_type, year, df)  # get natural language response
-    print(response)
-
-    # example: user requests breakdown
-    user_query_breakdown = "Give me the breakdown"
-    is_prediction = False
-    breakdown = give_breakdown(user_query, response, db, is_prediction)
-    print(breakdown)
