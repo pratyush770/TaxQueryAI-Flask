@@ -4,7 +4,7 @@ from logic import extract_query_info, generate_sql_query, give_breakdown, get_re
 from langchain_community.utilities import SQLDatabase
 from dotenv import load_dotenv
 import os
-import polars as pl
+import pandas as pd
 
 app = Flask(__name__)
 CORS(app)  # allows Next.js frontend to access this API
@@ -38,7 +38,7 @@ def api_get_response():
     df = None  # load the dataset
     if c:
         df_path = f"https://raw.githubusercontent.com/pratyush770/TaxQueryAI/master/datasets/transformed_data/Property-Tax-{c}.csv"
-        df = pl.read_csv(df_path)  # load CSV from GitHub
+        df = pd.read_csv(df_path)  # load CSV from GitHub
     ai_response, year, metric = get_response(user_query, get_db(), c, ptype, y, df)
     return jsonify({"year": year, "response": ai_response, metric: metric})
 
@@ -100,4 +100,4 @@ def api_get_ai_response():
 
 if __name__ == '__main__':
     db = get_db()  # initialize the database when the app starts
-    app.run(port=3000, debug=True)
+    # app.run(port=3000, debug=True)
