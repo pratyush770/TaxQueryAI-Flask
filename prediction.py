@@ -1,5 +1,18 @@
 import numpy as np
-from sklearn.linear_model import LinearRegression
+
+class SimpleLinearRegression:  # LinearRegression
+    def __init__(self):
+        self.coef_ = None
+        self.intercept_ = None
+
+    def fit(self, X, y):
+        X = np.hstack([np.ones((X.shape[0], 1)), X])  # add bias term for intercept
+        beta = np.linalg.lstsq(X, y, rcond=None)[0]  # solve for coefficients
+        self.intercept_ = beta[0]
+        self.coef_ = beta[1:]
+
+    def predict(self, X):
+        return self.intercept_ + np.dot(X, self.coef_)
 
 
 def train_prediction_model(df, property_type):  # train and predict
@@ -22,7 +35,7 @@ def train_prediction_model(df, property_type):  # train and predict
 
     for key in ["collection", "demand"]:
         y = tax_sums[key].values
-        model = LinearRegression()  # LinearRegression() call
+        model = SimpleLinearRegression()  # LinearRegression() call
         model.fit(X, y)  # fits the model
         models[key] = model
 
